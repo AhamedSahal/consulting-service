@@ -21,13 +21,22 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3002',
+  'http://localhost:5173'
+].filter(Boolean);
+
+// Allow any Vercel preview/production URL (*.vercel.app)
+const isVercelOrigin = (origin) => origin && /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL,
-    'http://localhost:3000',
-    'http://localhost:3002',
-    'http://localhost:5173'
-  ].filter(Boolean),
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // same-origin or non-browser
+    if (allowedOrigins.includes(origin) || isVercelOrigin(origin)) return cb(null, true);
+    cb(null, false);
+  },
   credentials: true
 }));
 app.use(express.json());
