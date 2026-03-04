@@ -1,5 +1,5 @@
 require('dotenv').config();
-const pool = require('./db');
+const pool = require('./src/config/db');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
@@ -7,9 +7,18 @@ const path = require('path');
 const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
 
 async function runMigrations() {
-  const migrationFile = path.join(MIGRATIONS_DIR, '001_init.sql');
-  const sql = fs.readFileSync(migrationFile, 'utf8');
-  await pool.query(sql);
+  const files = fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith('.sql'))
+    .sort();
+
+  for (const file of files) {
+    const migrationFile = path.join(MIGRATIONS_DIR, file);
+    const sql = fs.readFileSync(migrationFile, 'utf8');
+    console.log(`Running migration: ${file}`);
+    await pool.query(sql);
+  }
+
   console.log('Migrations applied');
 }
 
