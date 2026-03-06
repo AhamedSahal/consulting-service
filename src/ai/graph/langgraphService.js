@@ -65,45 +65,62 @@ async function callJdLlm({ draft, moduleKey, ragChunks, strictPlaybook }) {
     'Generate a job description using the following inputs.',
     `Job Title: ${draft.job_title || ''}`,
     `Reports To: ${draft.reports_to || ''}`,
+    `Department: ${draft.department || ''}`,
+    `Location: ${draft.location || ''}`,
+    `Grade: ${draft.grade || ''}`,
+    `No. of Direct Reports: ${draft.no_of_direct_reports || ''}`,
     `Job Family: ${draft.job_family || ''}`,
     `Level: ${draft.level || ''}`,
-    `Role Summary: ${draft.role_summary || ''}`,
-    `Template Type: ${draft.template_type || 'STANDARD'}`,
-    `Include % Contribution: ${draft.include_percentages ? 'Yes' : 'No'}`,
+    `Role Summary / Job Purpose: ${draft.role_summary || ''}`,
   ];
 
   if (hasPlaybookContext) {
     userPromptLines.push('\nPlaybook Context:\n', playbookContext);
   }
 
-  const templateDesc =
-    draft.template_type === 'BSC'
-      ? 'Balanced Scorecard (BSC) format: organise responsibilities into buckets such as Financial, Customer, Internal Processes, Learning & Growth.'
-      : 'Standard format: organise responsibilities by functional area or typical JD structure.';
-
   const outputFormat = `
 You must output valid JSON only, no markdown or extra text.
 
 JSON schema:
 {
-  "job_title": "string",
-  "reports_to": "string",
-  "department": "string",
-  "job_family": "string",
-  "level": "string",
-  "role_summary": "string",
-  "responsibilities": {
-    "bucketName1": ["item1", "item2"],
-    "bucketName2": ["item1"]
+  "job_information": {
+    "job_title": "string",
+    "reports_to": "string",
+    "department": "string",
+    "location": "string",
+    "grade": "string",
+    "no_of_direct_reports": "string"
   },
-  "kpis": ["kpi1", "kpi2"],
-  "competencies": {
-    "technical": ["c1", "c2"],
-    "behavioral": ["c1", "c2"]
+  "job_purpose": "A clear paragraph describing the overarching purpose and strategic importance of the role",
+  "key_accountabilities": [
+    "Action-oriented accountability statement 1",
+    "Action-oriented accountability statement 2"
+  ],
+  "financial_dimensions": "Description of budget, revenue, or cost responsibilities (e.g. 'Manages an operating budget of ...'). Use N/A if not applicable.",
+  "key_communications": {
+    "internal": ["Internal stakeholder or team 1", "Internal stakeholder or team 2"],
+    "external": ["External party 1", "External party 2"]
+  },
+  "minimum_qualifications": [
+    "Educational qualification or certification required",
+    "Years of experience required",
+    "Other mandatory experience"
+  ],
+  "technical_skills": [
+    "Technical skill or tool proficiency 1",
+    "Technical skill or tool proficiency 2"
+  ],
+  "competencies": [
+    "Competency 1",
+    "Competency 2"
+  ],
+  "special_requirements": "Any special requirements such as travel, shift work, physical demands, or mandatory certifications. Use N/A if none.",
+  "approvals": {
+    "prepared_by": "",
+    "approved_by": "",
+    "date": ""
   }
 }
-
-Follow ${templateDesc}.
 `;
 
   const messages = [
@@ -177,58 +194,98 @@ function jdJsonToMarkdown(jdJson) {
   if (!jdJson) return '';
 
   const lines = [];
-  if (jdJson.job_title) {
-    lines.push(`# ${jdJson.job_title}`);
+  lines.push('# JOB DESCRIPTION');
+
+  // 1. JOB INFORMATION
+  lines.push('');
+  lines.push('## 1. JOB INFORMATION');
+  lines.push('');
+  const info = jdJson.job_information || {};
+  lines.push(`**Job Title:** ${info.job_title || jdJson.job_title || ''}`);
+  lines.push(`**Reports To:** ${info.reports_to || jdJson.reports_to || ''}`);
+  lines.push(`**Department:** ${info.department || jdJson.department || ''}`);
+  lines.push(`**Location:** ${info.location || ''}`);
+  lines.push(`**Grade:** ${info.grade || ''}`);
+  lines.push(`**No. of Direct Reports:** ${info.no_of_direct_reports || ''}`);
+
+  // 2. JOB PURPOSE
+  lines.push('');
+  lines.push('## 2. JOB PURPOSE');
+  lines.push('');
+  lines.push(jdJson.job_purpose || jdJson.role_summary || '');
+
+  // 3. KEY ACCOUNTABILITIES & RESPONSIBILITIES
+  lines.push('');
+  lines.push('## 3. KEY ACCOUNTABILITIES & RESPONSIBILITIES');
+  lines.push('');
+  const accountabilities = jdJson.key_accountabilities || [];
+  if (Array.isArray(accountabilities) && accountabilities.length) {
+    accountabilities.forEach((item) => lines.push(`- ${item}`));
   }
-  if (jdJson.department || jdJson.job_family || jdJson.level || jdJson.reports_to) {
+
+  // 4. FINANCIAL DIMENSIONS
+  lines.push('');
+  lines.push('## 4. FINANCIAL DIMENSIONS');
+  lines.push('');
+  lines.push(jdJson.financial_dimensions || '');
+
+  // 5. KEY COMMUNICATIONS
+  lines.push('');
+  lines.push('## 5. KEY COMMUNICATIONS');
+  const comms = jdJson.key_communications || {};
+  if (Array.isArray(comms.internal) && comms.internal.length) {
     lines.push('');
-    if (jdJson.department) lines.push(`**Department:** ${jdJson.department}`);
-    if (jdJson.job_family) lines.push(`**Job Family:** ${jdJson.job_family}`);
-    if (jdJson.level) lines.push(`**Level:** ${jdJson.level}`);
-    if (jdJson.reports_to) lines.push(`**Reports To:** ${jdJson.reports_to}`);
+    lines.push('**Internal:**');
+    comms.internal.forEach((c) => lines.push(`- ${c}`));
   }
-  if (jdJson.role_summary) {
+  if (Array.isArray(comms.external) && comms.external.length) {
     lines.push('');
-    lines.push('## Role Summary');
-    lines.push('');
-    lines.push(jdJson.role_summary);
+    lines.push('**External:**');
+    comms.external.forEach((c) => lines.push(`- ${c}`));
   }
-  if (jdJson.responsibilities && typeof jdJson.responsibilities === 'object') {
-    lines.push('');
-    lines.push('## Key Responsibilities');
-    Object.entries(jdJson.responsibilities).forEach(([bucket, items]) => {
-      lines.push('');
-      lines.push(`### ${bucket}`);
-      (items || []).forEach((item) => {
-        lines.push(`- ${item}`);
-      });
-    });
+
+  // 6. MINIMUM QUALIFICATION / EXPERIENCE / TRAINING
+  lines.push('');
+  lines.push('## 6. MINIMUM QUALIFICATION / EXPERIENCE / TRAINING');
+  lines.push('');
+  const quals = jdJson.minimum_qualifications || [];
+  if (Array.isArray(quals) && quals.length) {
+    quals.forEach((q) => lines.push(`- ${q}`));
   }
-  if (Array.isArray(jdJson.kpis) && jdJson.kpis.length) {
-    lines.push('');
-    lines.push('## Key Performance Indicators (KPIs)');
-    lines.push('');
-    jdJson.kpis.forEach((kpi) => {
-      lines.push(`- ${kpi}`);
-    });
+
+  // 7. TECHNICAL SKILLS / KNOWLEDGE
+  lines.push('');
+  lines.push('## 7. TECHNICAL SKILLS / KNOWLEDGE');
+  lines.push('');
+  const skills = jdJson.technical_skills || [];
+  if (Array.isArray(skills) && skills.length) {
+    skills.forEach((s) => lines.push(`- ${s}`));
   }
-  if (jdJson.competencies && typeof jdJson.competencies === 'object') {
-    const { technical, behavioral } = jdJson.competencies;
-    if ((technical && technical.length) || (behavioral && behavioral.length)) {
-      lines.push('');
-      lines.push('## Competencies');
-      if (technical && technical.length) {
-        lines.push('');
-        lines.push('### Technical');
-        technical.forEach((c) => lines.push(`- ${c}`));
-      }
-      if (behavioral && behavioral.length) {
-        lines.push('');
-        lines.push('### Behavioral');
-        behavioral.forEach((c) => lines.push(`- ${c}`));
-      }
-    }
+
+  // 8. COMPETENCIES
+  lines.push('');
+  lines.push('## 8. COMPETENCIES');
+  lines.push('');
+  const comps = jdJson.competencies || [];
+  if (Array.isArray(comps) && comps.length) {
+    comps.forEach((c) => lines.push(`- ${c}`));
   }
+
+  // 9. SPECIAL JOB REQUIREMENTS
+  lines.push('');
+  lines.push('## 9. SPECIAL JOB REQUIREMENTS');
+  lines.push('');
+  lines.push(jdJson.special_requirements || '');
+
+  // 10. APPROVALS
+  lines.push('');
+  lines.push('## 10. APPROVALS');
+  lines.push('');
+  const approvals = jdJson.approvals || {};
+  lines.push(`**Prepared By:** ${approvals.prepared_by || ''}`);
+  lines.push(`**Approved By:** ${approvals.approved_by || ''}`);
+  lines.push(`**Date:** ${approvals.date || ''}`);
+
   return lines.join('\n');
 }
 
@@ -361,19 +418,29 @@ function getStrictJdGraph() {
 
   graph.addNode('qualityCheck', async (state) => {
     const jdJson = state.jdJson || {};
-    const requiredKeys = ['job_title', 'role_summary', 'responsibilities', 'kpis', 'competencies'];
+    const requiredKeys = [
+      'job_information',
+      'job_purpose',
+      'key_accountabilities',
+      'minimum_qualifications',
+      'technical_skills',
+      'competencies',
+    ];
     const missing = requiredKeys.filter((k) => jdJson[k] == null);
     if (missing.length) {
       throw new Error(`JD JSON is missing required fields: ${missing.join(', ')}`);
     }
-    if (typeof jdJson.responsibilities !== 'object') {
-      throw new Error('JD JSON responsibilities must be an object of arrays');
+    if (!Array.isArray(jdJson.key_accountabilities)) {
+      throw new Error('JD JSON key_accountabilities must be an array');
     }
-    if (!Array.isArray(jdJson.kpis)) {
-      throw new Error('JD JSON kpis must be an array');
+    if (!Array.isArray(jdJson.minimum_qualifications)) {
+      throw new Error('JD JSON minimum_qualifications must be an array');
     }
-    if (typeof jdJson.competencies !== 'object') {
-      throw new Error('JD JSON competencies must be an object');
+    if (!Array.isArray(jdJson.technical_skills)) {
+      throw new Error('JD JSON technical_skills must be an array');
+    }
+    if (!Array.isArray(jdJson.competencies)) {
+      throw new Error('JD JSON competencies must be an array');
     }
     return state;
   });

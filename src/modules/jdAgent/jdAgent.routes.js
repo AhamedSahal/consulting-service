@@ -34,8 +34,10 @@ const upload = multer({
 
 router.use(authRequired);
 
+router.get('/playbooks', jdAgentController.listPlaybooks);
 router.get('/playbook', jdAgentController.getPlaybook);
 router.post('/playbook', upload.single('playbook_file'), jdAgentController.uploadPlaybook);
+router.delete('/playbook/:id', jdAgentController.deletePlaybook);
 router.post('/jds/generate', jdAgentController.generateJd);
 router.get('/jds', jdAgentController.listJds);
 router.get('/jds/:id/export', jdAgentController.exportJd);

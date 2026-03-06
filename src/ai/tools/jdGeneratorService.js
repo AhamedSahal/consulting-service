@@ -167,12 +167,10 @@ function enforceVerbRules(jdJson, level) {
   if (!allowedVerbs) return jdJson;
 
   const result = JSON.parse(JSON.stringify(jdJson));
-  if (result.responsibilities && typeof result.responsibilities === 'object') {
-    for (const bucket of Object.keys(result.responsibilities)) {
-      result.responsibilities[bucket] = (result.responsibilities[bucket] || []).map((item) =>
-        rewriteToStartWithVerb(item, allowedVerbs),
-      );
-    }
+  if (Array.isArray(result.key_accountabilities)) {
+    result.key_accountabilities = result.key_accountabilities.map((item) =>
+      rewriteToStartWithVerb(item, allowedVerbs),
+    );
   }
   return result;
 }

@@ -21,6 +21,11 @@ async function search_playbook_chunks(args) {
     documentId: Number(playbookId) // ✅ if your vectorSearch supports it
   });
 
+  console.log(`[search_playbook_chunks] Retrieved ${(rows || []).length} chunks for agentId=${agentId}, playbookId=${playbookId}, query="${trimmed}"`);
+  (rows || []).forEach((row, i) => {
+    console.log(`  [chunk ${i + 1}] score=${row.score ?? row.similarity ?? 'N/A'} | ${(row.chunk_text || '').slice(0, 300)}`);
+  });
+
   const MAX_CHARS = 1500;
   return (rows || []).map((row) => ({
     ...row,
@@ -57,6 +62,11 @@ async function search_company_chunks(args) {
     query: trimmed,
     topK,
     docTypes: effectiveDocTypes,
+  });
+
+  console.log(`[search_company_chunks] Retrieved ${(rows || []).length} chunks for companyId=${companyId}, query="${trimmed}"`);
+  (rows || []).forEach((row, i) => {
+    console.log(`  [chunk ${i + 1}] score=${row.score ?? row.similarity ?? 'N/A'} | ${(row.chunk_text || '').slice(0, 300)}`);
   });
 
   const MAX_CHARS = 1500;

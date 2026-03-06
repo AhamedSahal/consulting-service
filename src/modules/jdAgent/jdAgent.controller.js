@@ -233,8 +233,124 @@ async function uploadPlaybook(req, res) {
   }
 }
 
+async function listPlaybooks(req, res) {
+  const companyId = req.user.company_id;
+  try {
+    const result = await pool.query(
+      `SELECT p.id,
+              p.title,
+              p.embedding_status,
+              p.created_at,
+              md.original_filename AS filename
+       FROM playbooks p
+       LEFT JOIN module_documents md
+              ON md.id = (p.meta->>'document_id')::bigint
+       WHERE (p.meta->>'company_id')::bigint = $1
+       ORDER BY p.created_at DESC`,
+      [companyId],
+    );
+    return res.json(result.rows);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to list playbooks:', err);
+    return res.status(500).json({ error: err.message || 'Failed to list playbooks' });
+  }
+}
+
+async function deletePlaybook(req, res) {
+  const playbookId = Number.parseInt(req.params.id, 10);
+  const companyId = req.user.company_id;
+
+  if (!Number.isFinite(playbookId) || playbookId <= 0) {
+    return res.status(400).json({ error: 'Invalid playbook id' });
+  }
+
+  // Verify ownership and get file info
+  let playbook;
+  try {
+    const playbookRes = await pool.query(
+      `SELECT id, file_url, meta
+       FROM playbooks
+       WHERE id = $1 AND (meta->>'company_id')::bigint = $2`,
+      [playbookId, companyId],
+    );
+    if (playbookRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Playbook not found' });
+    }
+    playbook = playbookRes.rows[0];
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to fetch playbook for deletion:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete playbook' });
+  }
+
+  const documentId = playbook.meta && playbook.meta.document_id
+    ? Number(playbook.meta.document_id)
+    : null;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Remove embeddings for this playbook
+    await client.query(
+      `DELETE FROM embeddings
+       WHERE owner_type = 'JD_AGENT'
+         AND document_id = $1
+         AND doc_type = 'PLAYBOOK'`,
+      [playbookId],
+    );
+
+    // Remove the module_documents record
+    if (documentId) {
+      await client.query(
+        `DELETE FROM module_documents WHERE id = $1 AND company_id = $2`,
+        [documentId, companyId],
+      );
+    }
+
+    // Remove the playbook record (jds.playbook_id is ON DELETE SET NULL so safe)
+    await client.query('DELETE FROM playbooks WHERE id = $1', [playbookId]);
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    // eslint-disable-next-line no-console
+    console.error('Failed to delete playbook:', err);
+    return res.status(500).json({ error: err.message || 'Failed to delete playbook' });
+  } finally {
+    client.release();
+  }
+
+  // Best-effort file cleanup
+  if (playbook.file_url) {
+    try {
+      const filePath = path.join(__dirname, '..', '..', playbook.file_url);
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to remove playbook file:', err);
+    }
+  }
+
+  return res.status(204).send();
+}
+
 async function generateJd(req, res) {
-  const { title, companyId: requestedCompanyId, description, strictPlaybook } = req.body || {};
+  const {
+    title,
+    companyId: requestedCompanyId,
+    description,
+    strictPlaybook,
+    reports_to,
+    department,
+    location,
+    grade,
+    no_of_direct_reports,
+    level,
+  } = req.body || {};
   const companyId = req.user.company_id;
 
   if (!title || typeof title !== 'string') {
@@ -247,12 +363,14 @@ async function generateJd(req, res) {
 
   const draft = {
     job_title: title,
-    reports_to: '',
+    reports_to: reports_to || '',
+    department: department || '',
+    location: location || '',
+    grade: grade || '',
+    no_of_direct_reports: no_of_direct_reports || '',
     job_family: '',
-    level: '',
+    level: level || '',
     role_summary: description || '',
-    template_type: 'STANDARD',
-    include_percentages: false,
     raw_responsibilities: null,
   };
 
@@ -386,6 +504,8 @@ async function exportJd(req, res) {
 module.exports = {
   getPlaybook,
   uploadPlaybook,
+  listPlaybooks,
+  deletePlaybook,
   generateJd,
   listJds,
   exportJd,
